@@ -6,6 +6,9 @@ This repository is a public mirror of the abandoned
 project. Canonical downloads live on
 [GitHub Releases](https://github.com/nefarius/vd_agent/releases).
 
+
+<br />
+
 The agent provides:
 
 - Client mouse mode without grabbing the pointer
