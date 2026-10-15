@@ -23,8 +23,8 @@ v0.13.1 (HexOS)
 - Ignore pasted WebDAV paths that point outside the shared drive
 - Re-read the displays after a monitor config when none were found, so an
   agent that started before the display driver recovers
-- Build and publish from github.com/eshtek/vd_agent. Releases attach the
-  `make dist` source tarball next to the MSI. The installers are not signed.
+- Build and publish from github.com/eshtek/vd_agent. Releases are signed by
+  Eshtek, Inc. and attach the `make dist` source tarball next to the MSI.
 
 v0.13.0
 =======

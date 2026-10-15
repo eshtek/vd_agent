@@ -54,8 +54,8 @@ msiexec /i spice-vdagent-x64-<version>.msi /qn /norestart
 
 It installs the `spice-agent` service (display name "Spice agent") to
 `C:\Program Files\SPICE agent\bin`. If the VirtIO guest tools already installed
-an agent, this one replaces it. The installers are not code-signed yet, so
-Windows may warn that the publisher is unknown.
+an agent, this one replaces it. The MSI and both executables are signed by
+Eshtek, Inc.
 
 HexOS installs this agent for you when it sets up a Windows VM from the
 catalog. For a VM you installed yourself, install the VirtIO guest tools first
@@ -87,8 +87,10 @@ fit_virtual_desktop::virtual desktop (0,0) 3200x1080
 GitHub Actions builds every push and pull request to `hexos`
 ([.github/workflows/build.yml](.github/workflows/build.yml)): an MSYS2 UCRT64
 build that runs the tests and packages the MSI, an MSVC build, and a Fedora
-MinGW cross build. Pushing a `v*` tag publishes a release with the MSI, the
-source tarball and a SHA-256 file for each.
+MinGW cross build. Pushing a `v*` tag also signs the executables and the MSI
+through Eshtek's Azure Artifact Signing account (the `release` environment,
+which admits only `v*` tags and needs an approval), then publishes a release
+with the MSI, the source tarball and a SHA-256 file for each.
 
 To build on Linux or macOS, any Fedora container works:
 
