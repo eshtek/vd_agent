@@ -594,8 +594,10 @@ bool VDAgent::send_input()
         w = (w > 1) ? w-1 : 1; /* coordinates are 0..w-1, protect w==0 */
         h = (h > 1) ? h-1 : 1; /* coordinates are 0..h-1, protect h==0 */
         mouse_move = MOUSEEVENTF_MOVE;
-        input->mi.dx = (mode->get_pos_x() + _new_mouse.x) * 0xffff / w;
-        input->mi.dy = (mode->get_pos_y() + _new_mouse.y) * 0xffff / h;
+        input->mi.dx = (_desktop_layout->get_desktop_offset_x() + mode->get_pos_x() +
+                        _new_mouse.x) * 0xffff / w;
+        input->mi.dy = (_desktop_layout->get_desktop_offset_y() + mode->get_pos_y() +
+                        _new_mouse.y) * 0xffff / h;
     }
     input->mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK | mouse_move;
 

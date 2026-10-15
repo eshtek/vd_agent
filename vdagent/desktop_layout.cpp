@@ -15,6 +15,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <climits>
 #include <spice/qxl_windows.h>
 #include <spice/qxl_dev.h>
 #include "desktop_layout.h"
@@ -36,6 +37,10 @@ void DisplayMode::set_res(DWORD width, DWORD height, DWORD depth)
 DesktopLayout::DesktopLayout()
     : _total_width (0)
     , _total_height (0)
+    , _origin_x (0)
+    , _origin_y (0)
+    , _desktop_offset_x (0)
+    , _desktop_offset_y (0)
     , _display_config (NULL)
 {
     _display_config = DisplayConfig::create_config();
@@ -56,6 +61,12 @@ dev_has_monitor(DISPLAY_DEVICE &dev_info)
     ZeroMemory(&mon_info, sizeof(mon_info));
     mon_info.cb = sizeof(mon_info);
     return EnumDisplayDevices(dev_info.DeviceName, 0, &mon_info, 0);
+}
+
+static bool
+is_qxl(const DISPLAY_DEVICE &dev_info)
+{
+    return !!wcsstr(dev_info.DeviceString, L"QXL");
 }
 
 static bool
@@ -82,25 +93,40 @@ get_next_display(DWORD &dev_id, DISPLAY_DEVICE &dev_info)
     return false;
 }
 
+static std::vector<DISPLAY_DEVICE> get_display_devices()
+{
+    std::vector<DISPLAY_DEVICE> devices;
+    DISPLAY_DEVICE dev_info;
+    DWORD dev_id = 0;
+
+    while (get_next_display(dev_id, dev_info)) {
+        devices.push_back(dev_info);
+    }
+    return devices;
+}
+
 void DesktopLayout::get_displays()
 {
-    DISPLAY_DEVICE dev_info;
     DEVMODE mode;
     DWORD display_id;
-    DWORD dev_id = 0;
     bool attached;
 
     MutexLocker lock(_mutex);
-    if (!consistent_displays()) {
-        return;
-    }
+    std::vector<DISPLAY_DEVICE> devices = get_display_devices();
+    // With QXL next to another adapter (a passed-through GPU with a monitor
+    // attached, a virtual display driver), the client knows only the QXL
+    // displays, so only they go in the layout.
+    bool mixed = !consistent_displays(devices);
     _display_config->update_config_path();
     clean_displays();
     ZeroMemory(&mode, sizeof(mode));
     mode.dmSize = sizeof(mode);
-    while (get_next_display(dev_id, dev_info)) {
+    for (DISPLAY_DEVICE &dev_info : devices) {
         size_t size = _displays.size();
-        if (!wcsstr(dev_info.DeviceString, L"QXL")) {
+        if (!is_qxl(dev_info)) {
+            if (mixed) {
+                continue;
+            }
             display_id = (DWORD)size;
         } else if (!get_qxl_device_id(dev_info.DeviceKey, &display_id)) {
             vd_printf("get_qxl_device_id failed %S", dev_info.DeviceKey);
@@ -121,6 +147,44 @@ void DesktopLayout::get_displays()
         _display_config->update_monitor_config(dev_info.DeviceName, _displays[display_id], &mode);
     }
     normalize_displays_pos();
+    fit_virtual_desktop();
+}
+
+// SendInput spreads absolute coordinates over the whole virtual desktop, which
+// includes displays the layout leaves out: other adapters', and those
+// get_next_display() skips.
+void DesktopLayout::fit_virtual_desktop()
+{
+    DISPLAY_DEVICE dev_info;
+    DEVMODE mode;
+    LONG min_x = LONG_MAX;
+    LONG min_y = LONG_MAX;
+    LONG max_x = LONG_MIN;
+    LONG max_y = LONG_MIN;
+
+    ZeroMemory(&dev_info, sizeof(dev_info));
+    dev_info.cb = sizeof(dev_info);
+    ZeroMemory(&mode, sizeof(mode));
+    mode.dmSize = sizeof(mode);
+    for (DWORD dev_id = 0; EnumDisplayDevices(NULL, dev_id, &dev_info, 0); dev_id++) {
+        if (!(dev_info.StateFlags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP) ||
+            (dev_info.StateFlags & DISPLAY_DEVICE_MIRRORING_DRIVER) ||
+            !EnumDisplaySettings(dev_info.DeviceName, ENUM_CURRENT_SETTINGS, &mode)) {
+            continue;
+        }
+        min_x = min(min_x, mode.dmPosition.x);
+        min_y = min(min_y, mode.dmPosition.y);
+        max_x = max(max_x, mode.dmPosition.x + (LONG)mode.dmPelsWidth);
+        max_y = max(max_y, mode.dmPosition.y + (LONG)mode.dmPelsHeight);
+    }
+    if (min_x >= max_x || min_y >= max_y) {
+        return;
+    }
+    vd_printf("virtual desktop (%ld,%ld) %ldx%ld", min_x, min_y, max_x - min_x, max_y - min_y);
+    _desktop_offset_x = _origin_x - min_x;
+    _desktop_offset_y = _origin_y - min_y;
+    _total_width = max_x - min_x;
+    _total_height = max_y - min_y;
 }
 
 DisplayMode * DesktopLayout::get_primary_display()
@@ -140,14 +204,15 @@ DisplayMode * DesktopLayout::get_primary_display()
 
 void DesktopLayout::set_displays()
 {
-    DISPLAY_DEVICE dev_info;
     DEVMODE dev_mode;
-    DWORD dev_id = 0;
     DWORD display_id = 0;
     int dev_sets = 0;
 
     MutexLocker lock(_mutex);
-    if (!consistent_displays()) {
+    std::vector<DISPLAY_DEVICE> devices = get_display_devices();
+    // Changing the layout next to another adapter's displays could move or
+    // reset a real monitor, so the layout is left to Windows.
+    if (!consistent_displays(devices)) {
         return;
     }
     _display_config->update_config_path();
@@ -159,8 +224,8 @@ void DesktopLayout::set_displays()
     LONG normal_x = primary ? primary->get_pos_x() : 0;
     LONG normal_y = primary ? primary->get_pos_y() : 0;
 
-    while (get_next_display(dev_id, dev_info)) {
-        bool is_qxl = !!wcsstr(dev_info.DeviceString, L"QXL");
+    for (DISPLAY_DEVICE &dev_info : devices) {
+        bool is_qxl = ::is_qxl(dev_info);
         if (is_qxl && !get_qxl_device_id(dev_info.DeviceKey, &display_id)) {
             vd_printf("get_qxl_device_id failed %S", dev_info.DeviceKey);
             break;
@@ -221,19 +286,19 @@ void DesktopLayout::normalize_displays_pos()
             }
         }
     }
+    _origin_x = min_x;
+    _origin_y = min_y;
     _total_width = max_x - min_x;
     _total_height = max_y - min_y;
 }
 
-bool DesktopLayout::consistent_displays()
+bool DesktopLayout::consistent_displays(const std::vector<DISPLAY_DEVICE> &devices)
 {
-    DISPLAY_DEVICE dev_info;
-    DWORD dev_id = 0;
     int non_qxl_count = 0;
     int qxl_count = 0;
 
-    while (get_next_display(dev_id, dev_info)) {
-        if (wcsstr(dev_info.DeviceString, L"QXL")) {
+    for (const DISPLAY_DEVICE &dev_info : devices) {
+        if (is_qxl(dev_info)) {
             qxl_count++;
         } else {
             non_qxl_count++;
@@ -248,6 +313,10 @@ void DesktopLayout::clean_displays()
     MutexLocker lock(_mutex);
     _total_width = 0;
     _total_height = 0;
+    _origin_x = 0;
+    _origin_y = 0;
+    _desktop_offset_x = 0;
+    _desktop_offset_y = 0;
     while (!_displays.empty()) {
         DisplayMode* mode = _displays.back();
         _displays.pop_back();

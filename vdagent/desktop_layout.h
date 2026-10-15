@@ -74,14 +74,18 @@ public:
     size_t get_display_count() { return _displays.size();}
     DWORD get_total_width() { return _total_width;}
     DWORD get_total_height() { return _total_height;}
+    // Where the layout's origin sits in the virtual desktop
+    LONG get_desktop_offset_x() { return _desktop_offset_x;}
+    LONG get_desktop_offset_y() { return _desktop_offset_y;}
     void set_position_configurable(bool flag);
     void set_display_depth(uint32_t depth);
 private:
     void clean_displays();
     void normalize_displays_pos();
+    void fit_virtual_desktop();
     DisplayMode * get_primary_display();
     bool init_dev_mode(LPCTSTR dev_name, DEVMODE* dev_mode, DisplayMode* mode);
-    static bool consistent_displays();
+    static bool consistent_displays(const std::vector<DISPLAY_DEVICE> &devices);
     static bool is_attached(LPCTSTR dev_name);
     static bool get_qxl_device_id(WCHAR* device_key, DWORD* device_id);
 private:
@@ -89,6 +93,10 @@ private:
     Displays _displays;
     DWORD _total_width;
     DWORD _total_height;
+    LONG _origin_x;
+    LONG _origin_y;
+    LONG _desktop_offset_x;
+    LONG _desktop_offset_y;
     DisplayConfig* _display_config;
 };
 
