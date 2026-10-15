@@ -1726,7 +1726,7 @@ void VDAgent::write_completion(DWORD err, DWORD bytes, LPOVERLAPPED overlapped)
     if (count == 0) {
         a->_message_queue.pop();
         a->_write_pos = 0;
-        delete chunk;
+        delete[] (char *)chunk;
         if (!a->_message_queue.empty()) {
             chunk = a->_message_queue.front();
             count = sizeof(VDIChunk) + chunk->hdr.size;
