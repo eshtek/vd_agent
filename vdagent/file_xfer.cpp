@@ -81,7 +81,9 @@ void FileXfer::handle_start(VDAgentFileXferStartMessage* start,
 {
     char* file_meta = (char*)start->data;
     TCHAR file_path[MAX_PATH];
-    char file_name[MAX_PATH];
+    // file name from protocol is encoded as UTF-8 so each character
+    // of the destination file could take up to 3 "char"
+    char file_name[MAX_PATH * 3];
     ULARGE_INTEGER free_bytes;
     uint64_t file_size;
     HANDLE handle;
