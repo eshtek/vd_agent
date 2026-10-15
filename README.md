@@ -1,222 +1,144 @@
-# <img src="assets/logo.png" align="left" />Spice VD Agent for Windows
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/hexos-logo-dark.svg">
+    <img src="assets/hexos-logo.svg" alt="HexOS" width="234">
+  </picture>
+</p>
 
-Community-maintained Windows guest agent for [SPICE](https://www.spice-space.org/).
-This repository is a public mirror of the abandoned
-[freedesktop.org spice/win32/vd_agent](https://gitlab.freedesktop.org/spice/win32/vd_agent)
-project. Canonical downloads live on
-[GitHub Releases](https://github.com/nefarius/vd_agent/releases).
+# SPICE guest agent for Windows, HexOS build
 
+This is the Windows SPICE guest agent (`vdservice.exe` and `vdagent.exe`) that
+[HexOS](https://hexos.com) installs in Windows virtual machines. It runs inside
+the guest and gives the SPICE console its mouse, its clipboard, file copy into
+the VM, and a desktop that resizes to fit the viewer's window.
 
-<br />
+The agent most Windows VMs run comes from the VirtIO guest tools, and that is
+still 0.10.0 from April 2019. Upstream has fixes on its master branch that were
+never released, and the freedesktop.org project is no longer maintained. This
+repository builds the current code with the patches HexOS needs and publishes
+an installer that upgrades the old agent in place.
 
-The agent provides:
+## What's different from the 0.10.0 agent
 
-- Client mouse mode without grabbing the pointer
-- Desktop resolution matching the client
-- Clipboard sharing (text and images)
-- File transfer into the guest
-- A Windows service (`spice-agent`) that starts `vdagent.exe` in each session
+- The mouse keeps working next to a passed-through GPU. With a GPU in the VM
+  that has a monitor or a dummy plug attached (or with a virtual display
+  driver), the old agent dropped every mouse event: the pointer froze in the
+  console while the keyboard and Remote Desktop kept working. Upstream fixed
+  the case where the GPU has nothing plugged in. This build also handles a GPU
+  with a monitor by mapping the mouse across the whole desktop, and it leaves
+  the display layout alone so it never moves or resets a real monitor.
+- Files copied into the VM land in Downloads, and the agent opens the folder,
+  as the Linux agent does. The old agent saved them to the Desktop.
+- File copy tells the client when nobody is signed in to Windows, and it
+  accepts long file names in non-Latin scripts.
+- Side and extra mouse buttons (back and forward) work.
+- Clipboard images go through the Windows Imaging Component instead of a
+  bundled libpng, with size checks on what the client sends.
+- Fixes for crashes and memory errors in display settings, the message queue
+  and capability negotiation.
+- A newer MSI replaces the installed agent, including the one the VirtIO guest
+  tools put there, and the guest tools installer then skips its own older copy
+  instead of failing.
 
-## Status
+The full list is in [CHANGELOG.md](CHANGELOG.md).
 
-Red Hat no longer maintains upstream SPICE. This fork keeps the Windows agent
-building and shipping for current guests, especially Windows 11 VMs on Linux.
+## Install
 
-The tree already includes the multi-GPU mouse fix from
-[`d7405ee`](https://gitlab.freedesktop.org/spice/win32/vd_agent/-/commit/d7405ee)
-(`vdagent/desktop_layout.cpp`): when a real GPU is passed through alongside the
-SPICE display device, the agent no longer loses mouse movement.
+Download `spice-vdagent-x64-<version>.msi` from
+[Releases](https://github.com/eshtek/vd_agent/releases) and run it in the VM,
+or install it silently from an administrator prompt:
 
-## License and provenance
+```powershell
+msiexec /i spice-vdagent-x64-<version>.msi /qn /norestart
+```
 
-The agent is **GPL-2.0-or-later**. See [COPYING](COPYING) and the copyright
-headers in each source file. Original copyright remains with Red Hat, Inc. and
-other upstream authors. This fork does not claim the Red Hat or SPICE
-trademarks.
+It installs the `spice-agent` service (display name "Spice agent") to
+`C:\Program Files\SPICE agent\bin`. If the VirtIO guest tools already installed
+an agent, this one replaces it. The installers are not code-signed yet, so
+Windows may warn that the publisher is unknown.
 
-Pinned build-time submodules (do not bump casually):
+HexOS installs this agent for you when it sets up a Windows VM from the
+catalog. For a VM you installed yourself, install the VirtIO guest tools first
+(they bring the virtio-serial driver the agent talks over), then this MSI.
 
-| Submodule | Commit | Upstream |
-|-----------|--------|----------|
-| `spice-protocol` | `ce0c4211e6f16c66477934cc42e70fa0988ca7f0` | https://gitlab.freedesktop.org/spice/spice-protocol |
-| `spice-common` | `05c0c26839e88e6d0cc5452f49c40e38543c8f97` | https://gitlab.freedesktop.org/spice/spice-common |
+To go back to the stock agent, uninstall "Spice agent" from Installed apps and
+run the VirtIO guest tools installer again.
 
-Submodule URLs use HTTPS. MSI upgrades keep the historical WiX `UpgradeCode`
-(`7eb9b146-db04-42d7-a8ba-71fc8ced7eed`). Related products are removed after
-`InstallValidate`, before the install transaction begins, so the shared
-components are recopied instead of being deleted by the old package's
-uninstall. Because `wixl` does not read the PE version resource, the `File`
-table gets `RC_FILEVERSION` explicitly; keep it identical to the four fields in
-`VS_VERSION_INFO`. The x64 installer still only ships `vdagent.exe` and
-`vdservice.exe` into `C:\Program Files\SPICE agent\bin`.
+## Troubleshooting
 
-## Clone
+The agent logs to `C:\Windows\Temp\vdagent.log`. Each time the display setup
+changes it writes a line like this:
 
-```bash
-git clone --recursive https://github.com/nefarius/vd_agent.git
+```
+consistent_displays::#qxls 1 #others 1
+```
+
+`#others` counts displays on adapters other than QXL that have a monitor. When
+both numbers are above zero, the 0.10.0 agent stops handling the mouse and logs
+`No QXL devices!` at startup. This build keeps going and logs the size of the
+whole desktop it maps the mouse onto:
+
+```
+fit_virtual_desktop::virtual desktop (0,0) 3200x1080
+```
+
+## Building
+
+GitHub Actions builds every push and pull request to `hexos`
+([.github/workflows/build.yml](.github/workflows/build.yml)): an MSYS2 UCRT64
+build that runs the tests and packages the MSI, an MSVC build, and a Fedora
+MinGW cross build. Pushing a `v*` tag publishes a release with the MSI, the
+source tarball and a SHA-256 file for each.
+
+To build on Linux or macOS, any Fedora container works:
+
+```sh
+git clone --recursive https://github.com/eshtek/vd_agent.git
 cd vd_agent
+docker run --rm -v "$PWD":/src -w /src fedora:42 bash -c '
+  dnf install -y git libtool make autoconf autoconf-archive automake \
+    mingw64-gcc-c++ mingw64-winpthreads-static msitools
+  git config --global --add safe.directory /src
+  autoreconf -if && mingw64-configure && mingw64-make && mingw64-make msi'
 ```
 
-If you already cloned without submodules:
+That leaves `vdagent.exe`, `vdservice.exe` and
+`spice-vdagent-x64-<version>.msi` in the checkout. To build on Windows, use an
+MSYS2 UCRT64 shell:
 
-```bash
-git submodule update --init --recursive
-```
-
-The freedesktop GitLab remote is preserved as `upstream` after the mirror was
-created. Fetch it with:
-
-```bash
-git fetch upstream
-```
-
-## Local build (MSYS2 UCRT64)
-
-The Autotools + MinGW-w64 UCRT64 path is the supported way to produce the
-installer. CMake + MSVC remains available for local development but does not
-build an MSI.
-
-### Prerequisites
-
-- [MSYS2](https://www.msys2.org/)
-- An **UCRT64** shell (`C:\msys64\ucrt64.exe`, or `MSYSTEM=UCRT64`)
-
-From the UCRT64 shell, in the repository root:
-
-```bash
+```sh
 bash msys2/install.sh
 autoreconf -i
 bash msys2/build.sh builducrt64
 bash msys2/package.sh builducrt64
 ```
 
-`install.sh` pulls `autotools`, `autoconf-archive`, the UCRT64 toolchain,
-`msitools` (`wixl`), and ImageMagick (tests). PNG clipboard conversion uses
-the Windows Imaging Component that ships with Windows Vista and later.
+The version comes from `git describe`, so build from a clone with its tags.
 
-`build.sh` configures, compiles `vdagent.exe` / `vdservice.exe`, and runs
-`test-png`, `test-log`, and `test-shell`. `package.sh` then invokes
-`make msi` and writes:
+## Branches and releases
 
-```
-builducrt64/spice-vdagent-x64-<version>.msi
-```
+- `hexos` is the default branch and what releases are cut from.
+- `master` mirrors [upstream](https://gitlab.freedesktop.org/spice/win32/vd_agent)
+  unchanged.
 
-Version strings come from `git describe` via
-[`build-aux/git-version-gen`](build-aux/git-version-gen). Release tags must
-look like `v0.11.0` (minor bumps) so Programs and Features shows the tag
-exactly. Untagged builds add the commit count since the last tag (for example
-`v0.11.0` plus 83 commits becomes `0.11.0.83-<hash>`). Configure fails if that count
-plus `--with-buildid` reaches 256, because that would collide with the next
-micro version.
+`hexos` is upstream master plus the packaging and hardening work from
+[nefarius/vd_agent](https://github.com/nefarius/vd_agent), plus HexOS's own
+patches. Releases keep the maintained fork's minor version and count HexOS
+releases in the patch number: v0.13.1 is the first HexOS release on top of 0.13.0.
+The MSI keeps upstream's UpgradeCode, so each release upgrades any earlier
+build, ours or anyone else's.
 
-To sign a local build, sign the two executables **before** `package.sh`, then
-sign the MSI.
+To release, add the changes to [CHANGELOG.md](CHANGELOG.md), then tag and push:
 
-### Optional MSVC build
-
-```powershell
-git submodule update --init --recursive
-cmake -S . -B build64 -A x64
-cmake --build build64 --config Release
-cmake --build build64 --config Release --target check
+```sh
+git tag -a v0.13.2 -m "vdagent-win 0.13.2"
+git push origin v0.13.2
 ```
 
-## CI and releases
+## License
 
-GitHub Actions (`.github/workflows/build.yml`) builds the x64 UCRT64 MSI on
-`windows-2022`.
-
-| Event | Signing | Publish |
-|-------|---------|---------|
-| Pull request / `master` push | Skipped | Workflow artifact `vdagent-win-x64` only |
-| Tag `v*` | Required | Signed MSI + SHA-256, artifact mirror, GitHub Release |
-
-Signing uses [SignRelay](https://github.com/nefarius/SignRelay) so the
-certificate never lands on the runner. The flow matches
-[DsHidMini](https://github.com/nefarius/DsHidMini):
-
-1. Build and test unsigned binaries
-2. On a `v*` tag, sign `vdagent.exe` and `vdservice.exe` in place
-3. Package the MSI from those binaries
-4. Sign the MSI
-5. Verify Authenticode (`Get-AuthenticodeSignature` Status = `Valid`)
-6. Write `<msi>.sha256`
-7. Upload `vdagent-win-x64` and, on tags, notify
-   [AppVeyorArtifactsReceiver](https://github.com/nefarius/AppVeyorArtifactsReceiver)
-8. Attach the MSI and checksum to the GitHub Release
-
-The SignRelay composite action is pinned to commit
-`39ccbe0cef16a383237130380a5aef8db040d5d0`. The CLI needs **.NET 10** on the
-runner (`actions/setup-dotnet` with `10.0.x`).
-
-### Repository settings
-
-Create these on `nefarius/vd_agent` (Settings → Secrets and variables):
-
-| Name | Kind | Purpose |
-|------|------|---------|
-| `SIGN_RELAY_SERVER` | Variable | Relay base URL, for example `https://signrelay.api.nefarius.systems/` |
-| `SIGN_RELAY_CI_TOKEN` | Secret | CI bearer token (`SignRelay__CiToken` on the server) |
-| `WEBHOOK_URL` | Secret | AppVeyorArtifactsReceiver webhook |
-
-Copy `SIGN_RELAY_CI_TOKEN` and `WEBHOOK_URL` from an already-working repo such
-as DsHidMini. `SIGN_RELAY_SERVER` is already set as a repository variable.
-Do not commit secret values.
-
-The Windows SignRelay agent holds the code-signing certificate. Configure
-subject/thumbprint and timestamp there, not in this repository.
-
-### Publishing a release
-
-1. Update [CHANGELOG.md](CHANGELOG.md)
-2. Tag an annotated release and push it:
-
-   ```bash
-   git tag -a v0.11.0 -m "vdagent-win 0.11.0"
-   git push origin v0.11.0
-   ```
-
-3. Confirm the **Build** workflow:
-   - unsigned path is not used
-   - both executables and the MSI verify as `Valid`
-   - artifacts receiver accepted the webhook
-   - the GitHub Release contains the MSI and `.sha256`
-4. Install the MSI in a Windows 11 SPICE guest and run the checklist below
-
-If a tagged build fails after signing started, fix the tree and move the tag
-forward (or use a new minor version). Do not reuse a published MSI name with
-different bytes.
-
-To recover a failed release: delete the GitHub Release draft if any, push a
-new tag, and keep the previous published tag immutable if users may have
-downloaded it.
-
-`appveyor.yml` is kept only for historical parity with the last upstream
-UCRT64 MSI layout. GitHub Actions is the authoritative CI. Remove AppVeyor
-once a signed Actions MSI has been smoke-tested.
-
-## Windows 11 VM validation
-
-Use a Windows 11 guest on Linux (QEMU/KVM + SPICE), with the QXL or
-`qxl-wddm-dod` display device.
-
-1. **Clean install** — run `spice-vdagent-x64-*.msi` as Administrator
-2. **Service** — `spice-agent` is Running / Automatic; `vdagent.exe` is
-   present in the user session
-3. **SPICE connection** — reconnect virt-viewer / spicy; agent channel is up
-4. **Clipboard** — text and a bitmap both ways
-5. **File transfer** — drop a file from the client; it lands on the desktop
-6. **Dynamic resolution** — resize the client window; the guest desktop
-   follows when the WDDM QXL driver is in use
-7. **Multi-GPU / passthrough mouse** — add a real GPU for passthrough, keep
-   the SPICE display, confirm the pointer keeps moving (the `d7405ee` fix)
-8. **Upgrade** — install over a previous Spice agent MSI; service comes back
-9. **Uninstall** — remove the product; `spice-agent` is gone
-
-## Optional CMake / Fedora notes
-
-- Fedora cross-builds still work via [`.gitlab-ci.yml`](.gitlab-ci.yml) and
-  [`mingw-spice-vdagent.spec.in`](mingw-spice-vdagent.spec.in); they are not
-  used for GitHub Releases.
-- x86 MSI builds are no longer produced by the maintained pipeline.
+GPL-2.0-or-later; see [COPYING](COPYING). The agent is the work of Red Hat and
+the SPICE contributors. Benjamin Höglinger-Stelzer
+([nefarius](https://github.com/nefarius)) wrote the multi-GPU mouse fix and
+keeps the maintained fork this build is based on. SPICE is not a HexOS
+trademark, and this build is not affiliated with the SPICE project.

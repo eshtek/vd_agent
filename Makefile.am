@@ -130,7 +130,7 @@ test_shell_win_SOURCES = \
 	vdagent/test-shell.cpp \
 	$(NULL)
 
-MANUFACTURER = Nefarius Software Solutions e.U.
+MANUFACTURER = Eshtek, Inc.
 PRODUCT = Spice agent
 
 EXTRA_DIST += spice-vdagent.wxs.in
