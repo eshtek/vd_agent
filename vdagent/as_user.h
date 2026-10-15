@@ -28,11 +28,14 @@ public:
     AsUser(DWORD session_id = (DWORD)-1);
     bool begin();
     void end();
+    // After a failed begin(): nobody is signed in to the session
+    bool no_user() const { return _no_user; }
 
 private:
     DWORD _session_id;
     HANDLE _token;
     bool _started;
+    bool _no_user;
 };
 
 #endif

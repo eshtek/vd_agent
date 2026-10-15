@@ -108,6 +108,11 @@ void FileXfer::handle_start(VDAgentFileXferStartMessage* start,
     }
     if (!as_user.begin()) {
         vd_printf("as_user failed");
+        if (as_user.no_user()) {
+            // There is no user to save the file as, as when the Linux agent has
+            // no session agent
+            status.common.result = VD_AGENT_FILE_XFER_STATUS_VDAGENT_NOT_CONNECTED;
+        }
         return;
     }
 

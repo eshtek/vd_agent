@@ -23,7 +23,8 @@
 AsUser::AsUser(DWORD session_id):
     _session_id(session_id),
     _token(INVALID_HANDLE_VALUE),
-    _started(false)
+    _started(false),
+    _no_user(false)
 {
 }
 
@@ -41,7 +42,9 @@ bool AsUser::begin()
     if (_token == INVALID_HANDLE_VALUE) {
         ret = WTSQueryUserToken(_session_id, &_token);
         if (!ret) {
-            vd_printf("WTSQueryUserToken failed -- %lu", GetLastError());
+            DWORD err = GetLastError();
+            _no_user = err == ERROR_NO_TOKEN;
+            vd_printf("WTSQueryUserToken failed -- %lu", err);
             return false;
         }
     }
