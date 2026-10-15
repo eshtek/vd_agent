@@ -236,15 +236,15 @@ jobs:
           $hash = Get-FileHash -LiteralPath $msi.FullName -Algorithm SHA256
           $sumName = "$($msi.Name).sha256"
           $sumPath = Join-Path $stage $sumName
-          "{0}  {1}" -f $hash.Hash.ToLowerInvariant(), $msi.Name |
-            Set-Content -LiteralPath $sumPath -Encoding ascii
+          # LF, so sha256sum -c works on the files as downloaded
+          [IO.File]::WriteAllText($sumPath, ("{0}  {1}`n" -f $hash.Hash.ToLowerInvariant(), $msi.Name))
           Write-Output "Staged $($msi.Name) sha256=$($hash.Hash.ToLowerInvariant())"
           $src = Get-ChildItem -Path $env:BUILD_DIR -Filter 'vdagent-win-*.tar.xz' | Select-Object -First 1
           if (-not $src) { throw 'Source tarball not found after make dist.' }
           Copy-Item -LiteralPath $src.FullName -Destination $stage
           $srcHash = Get-FileHash -LiteralPath $src.FullName -Algorithm SHA256
-          "{0}  {1}" -f $srcHash.Hash.ToLowerInvariant(), $src.Name |
-            Set-Content -LiteralPath (Join-Path $stage "$($src.Name).sha256") -Encoding ascii
+          [IO.File]::WriteAllText((Join-Path $stage "$($src.Name).sha256"),
+            ("{0}  {1}`n" -f $srcHash.Hash.ToLowerInvariant(), $src.Name))
           Write-Output "Staged $($src.Name) sha256=$($srcHash.Hash.ToLowerInvariant())"
           "msi-name=$($msi.Name)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
