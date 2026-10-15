@@ -727,8 +727,10 @@ bool VDAgent::handle_mon_config(const VDAgentMonitorsConfig* mon_config, uint32_
     }
 
     _updating_display_config = false;
-    /* Refresh after a change: WM_DISPLAYCHANGE is ignored while updating. */
-    if (update_displays) {
+    /* Refresh after a change: WM_DISPLAYCHANGE is ignored while updating.
+     * With no displays yet, refresh anyway: that is how the agent recovers
+     * from starting before the display driver. */
+    if (update_displays || display_count == 0) {
         _desktop_layout->get_displays();
     }
 
