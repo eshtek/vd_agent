@@ -85,7 +85,9 @@ get_next_display(DWORD &dev_id, DISPLAY_DEVICE &dev_info)
         if (wcsstr(dev_info.DeviceString, L"Citrix Indirect Display")) {
             continue;
         }
-        if (!dev_has_monitor(dev_info)) {
+        // A QXL head the agent turned off can lose its monitor, and it must
+        // stay in the layout so the client can turn it back on.
+        if (!is_qxl(dev_info) && !dev_has_monitor(dev_info)) {
             continue;
         }
         return true;
