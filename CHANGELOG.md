@@ -1,6 +1,31 @@
 unreleased
 ==========
 
+v0.13.1 (HexOS)
+===============
+- Keep the mouse working when Windows has displays on another adapter as well
+  as QXL, such as a passed-through GPU with a monitor or dummy plug attached,
+  or a virtual display driver. The agent used to refuse that mix and drop
+  every mouse event, so the pointer froze in the SPICE console while the
+  keyboard kept working. The layout now holds the QXL displays the client
+  knows about, mapped onto the whole virtual desktop, and the agent leaves the
+  display layout to Windows while the other adapter's displays are present
+- Only skip non-QXL outputs that have no monitor, so a QXL head the agent
+  turned off stays in the layout and the client can turn it back on
+- Report a file transfer with nobody signed in to Windows as "agent not
+  connected" instead of a bare error
+- Accept file names up to the Windows limit when their UTF-8 form is longer
+  than MAX_PATH bytes (from Frediano Ziglio)
+- Reset the negotiated capabilities on every announcement and start them
+  zeroed (from Frediano Ziglio)
+- Free outgoing message chunks with `delete[]`, matching their allocation
+  (from Javier Celaya)
+- Ignore pasted WebDAV paths that point outside the shared drive
+- Re-read the displays after a monitor config when none were found, so an
+  agent that started before the display driver recovers
+- Build and publish from github.com/eshtek/vd_agent. Releases attach the
+  `make dist` source tarball next to the MSI. The installers are not signed.
+
 v0.13.0
 =======
 - Fix a major upgrade wiping the installation: removing the previous MSI after
