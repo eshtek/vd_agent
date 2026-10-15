@@ -863,6 +863,11 @@ static std::vector<wchar_t> clipboard_data_to_path_array(
         if (!wpath.length() || !PathCombine(buf, drive.c_str(), wpath.c_str())) {
             continue;
         }
+        // An absolute or UNC path from the client would leave the shared drive
+        if (_wcsnicmp(buf, drive.c_str(), drive.length()) != 0) {
+            vd_printf("ignoring a path outside the shared drive");
+            continue;
+        }
 
         paths.push_back(std::wstring(buf));
     }
