@@ -165,7 +165,7 @@ private:
 
     int32_t _max_clipboard;
     std::vector<uint32_t> _client_caps;
-    std::array<uint32_t, VD_AGENT_CAPS_SIZE> _final_caps;
+    std::array<uint32_t, VD_AGENT_CAPS_SIZE> _final_caps = {};
 
     std::set<uint32_t> _grab_types;
 
