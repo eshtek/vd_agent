@@ -1,0 +1,39 @@
+name: Upstream mouse verification
+on:
+  push:
+    branches: [ci/upstream-mouse-check]
+permissions:
+  contents: read
+jobs:
+  upstream:
+    runs-on: ubuntu-24.04
+    container: fedora:44
+    timeout-minutes: 25
+    steps:
+      - name: Install upstream test dependencies
+        run: >-
+          dnf install -y --setopt=install_weak_deps=False git libtool make ImageMagick
+          autoconf autoconf-archive automake xorg-x11-server-Xvfb
+          wine-core.x86_64 wine-core.i686
+          mingw32-libpng-static mingw32-zlib-static mingw32-gcc-c++ mingw32-winpthreads-static
+          mingw64-libpng-static mingw64-zlib-static mingw64-gcc-c++ mingw64-winpthreads-static
+      - name: Build and test exact upstream patch on both Windows architectures
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --no-checkout https://gitlab.freedesktop.org/eschultz/vd_agent.git /tmp/upstream
+          cd /tmp/upstream
+          git checkout --detach 208c972bd814d0c022d5ed16e3b97d9a2eea78ab
+          test "$(git rev-parse HEAD^{tree})" = c9363771a467c9e16d09fa9890388d35aa6c599c
+          git -c url.https://gitlab.freedesktop.org/spice/.insteadOf=git://git.freedesktop.org/git/spice/ submodule update --init --recursive
+          Xvfb :99 -screen 0 1280x1024x24 >/tmp/xvfb.log 2>&1 &
+          export DISPLAY=:99 WINEPREFIX=/tmp/upstream-wine WINEDEBUG=-all
+          sleep 1
+          autoreconf -if
+          mingw64-configure
+          mingw64-make -j4
+          timeout 300 mingw64-make check || { cat test-suite.log test-png.log test-log.log test-shell.log; exit 1; }
+          make distclean
+          mingw32-configure
+          mingw32-make -j4
+          timeout 300 mingw32-make check || { cat test-suite.log test-png.log test-log.log test-shell.log; exit 1; }
