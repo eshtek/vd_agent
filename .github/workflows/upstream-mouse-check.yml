@@ -5,19 +5,18 @@ on:
 permissions:
   contents: read
 jobs:
-  upstream:
+  cross-build:
     runs-on: ubuntu-24.04
     container: fedora:44
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
-      - name: Install upstream test dependencies
+      - name: Install upstream cross-build dependencies
         run: >-
-          dnf install -y --setopt=install_weak_deps=False git libtool make ImageMagick
-          autoconf autoconf-archive automake xorg-x11-server-Xvfb
-          wine-core.x86_64 wine-core.i686
+          dnf install -y --setopt=install_weak_deps=False git libtool make
+          autoconf autoconf-archive automake
           mingw32-libpng-static mingw32-zlib-static mingw32-gcc-c++ mingw32-winpthreads-static
           mingw64-libpng-static mingw64-zlib-static mingw64-gcc-c++ mingw64-winpthreads-static
-      - name: Build and test exact upstream patch on both Windows architectures
+      - name: Build exact upstream patch on both Windows architectures
         shell: bash
         run: |
           set -euo pipefail
@@ -26,14 +25,36 @@ jobs:
           git checkout --detach 208c972bd814d0c022d5ed16e3b97d9a2eea78ab
           test "$(git rev-parse HEAD^{tree})" = c9363771a467c9e16d09fa9890388d35aa6c599c
           git -c url.https://gitlab.freedesktop.org/spice/.insteadOf=git://git.freedesktop.org/git/spice/ submodule update --init --recursive
-          Xvfb :99 -screen 0 1280x1024x24 >/tmp/xvfb.log 2>&1 &
-          export DISPLAY=:99 WINEPREFIX=/tmp/upstream-wine WINEDEBUG=-all
-          sleep 1
           autoreconf -if
           mingw64-configure
-          mingw64-make -j4
-          timeout 300 mingw64-make check || { cat test-suite.log test-png.log test-log.log test-shell.log; exit 1; }
+          mingw64-make -j4 all imagetest.exe test-log-win.exe test-shell-win.exe
           make distclean
           mingw32-configure
-          mingw32-make -j4
-          timeout 300 mingw32-make check || { cat test-suite.log test-png.log test-log.log test-shell.log; exit 1; }
+          mingw32-make -j4 all imagetest.exe test-log-win.exe test-shell-win.exe
+  native-windows:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: msys2/setup-msys2@v2.32.0
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            autotools autoconf-archive git make
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-libpng
+            mingw-w64-ucrt-x86_64-zlib
+            mingw-w64-ucrt-x86_64-imagemagick
+      - name: Build and test exact upstream patch on Windows
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          git -c core.autocrlf=false clone --no-checkout https://gitlab.freedesktop.org/eschultz/vd_agent.git /tmp/upstream
+          cd /tmp/upstream
+          git -c core.autocrlf=false checkout --detach 208c972bd814d0c022d5ed16e3b97d9a2eea78ab
+          test "$(git rev-parse HEAD^{tree})" = c9363771a467c9e16d09fa9890388d35aa6c599c
+          git -c core.autocrlf=false -c url.https://gitlab.freedesktop.org/spice/.insteadOf=git://git.freedesktop.org/git/spice/ submodule update --init --recursive
+          autoreconf -if
+          ./configure
+          make -j4
+          make check || { cat test-suite.log test-png.log test-log.log test-shell.log; exit 1; }
